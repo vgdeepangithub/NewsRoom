@@ -1,0 +1,65 @@
+name: Trump Trolls — Daily Podcast Script
+
+on:
+  schedule:
+    # 7:00 PM Eastern Time daily (23:00 UTC, accounts for EDT offset)
+    - cron: "0 23 * * *"
+
+  # Allow manual trigger from GitHub Actions tab
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Optional: paste a specific transcript URL"
+        required: false
+        default: ""
+
+jobs:
+  generate-script:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # needed to commit the output back to the repo
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run workflow
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "${{ github.event.inputs.url }}" ]; then
+            python main.py --url "${{ github.event.inputs.url }}"
+          else
+            python main.py
+          fi
+
+      - name: Check if output was generated
+        id: check_output
+        run: |
+          TODAY=$(date +%Y-%m-%d)
+          if [ -f "output/${TODAY}_trump-trolls.txt" ]; then
+            echo "generated=true" >> $GITHUB_OUTPUT
+            echo "Script generated for ${TODAY}"
+          else
+            echo "generated=false" >> $GITHUB_OUTPUT
+            echo "No script generated (likely a skip day)"
+          fi
+
+      - name: Commit and push script to repo
+        if: steps.check_output.outputs.generated == 'true'
+        run: |
+          git config user.name "Trump Trolls Bot"
+          git config user.email "actions@github.com"
+          TODAY=$(date +%Y-%m-%d)
+          git add "output/${TODAY}_trump-trolls.txt" "output/${TODAY}_trump-trolls.md"
+          git commit -m "script: ${TODAY} episode teleprompter script"
+          git push
